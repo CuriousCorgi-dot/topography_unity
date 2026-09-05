@@ -1,0 +1,21 @@
+{
+    "id": "pyramid_test_513",
+    "source_image": null,
+    "heightmap": "pyramid_heightmap.png",
+    "heightmap_encoding": "grayscale16",
+    "heightmap_width_px": 513,
+    "heightmap_height_px": 513,
+    "elevation_range_m": {
+        "min": 0.0,
+        "max": 1000.0
+    },
+    "real_world_size_m": {
+        "width": 1000.0,
+        "height": 1000.0
+    },
+    "expected_shape": "square pyramid, apex exactly at center pixel (256,256)",
+    "expected_peak_elevation_m": 1000.0,
+    "expected_edge_elevation_m": 0.0,
+    "expected_midpoint_elevation_m": 500.0,
+    "note": "If Terrain Toolbox import is correct: center of terrain = 1000m, all four edges = 0m, halfway between = 500m, straight-line slope throughout. Any curve, offset, or wrong peak height means Height/Width/Length are set wrong."
+}
