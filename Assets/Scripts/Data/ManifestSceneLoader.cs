@@ -43,9 +43,13 @@ public class ManifestSceneLoader : MonoBehaviour
             return;
         }
 
-        TerrainSceneManifest manifest = JsonUtility.FromJson<TerrainSceneManifest>(File.ReadAllText(path));
-        LoadedManifest = manifest;
-        LogManifest(path, manifest);
+	TerrainSceneManifest manifest =
+    		JsonUtility.FromJson<TerrainSceneManifest>(File.ReadAllText(path));
+
+	ManifestValidator.ValidateOrThrow(manifest);
+
+	LoadedManifest = manifest;
+	LogManifest(path, manifest);
 
         // TODO (later phase): use manifest.heightmap / source_image /
         // elevation_range_m / real_world_size_m here to load and swap in the
