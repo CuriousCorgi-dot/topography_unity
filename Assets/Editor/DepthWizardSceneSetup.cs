@@ -117,11 +117,11 @@ public static class DepthWizardSceneSetup
                    "patch you want it to log (defaults to \"patch_43\"), then press Play and check the Console.");
     }
 
-    [MenuItem("DepthWizard/Setup/Drape Terrain Texture...")]
-    public static void OpenDrapeTextureWindow()
-    {
-        DepthWizardTextureDrapeWindow.Open();
-    }
+    // Drape Terrain Texture... is registered by DepthWizardTextureDrapeWindow
+    // itself (it needs its own [MenuItem] to open as a window) - registering
+    // it here too just duplicates the same path and Unity warns on it, so
+    // this file only keeps the shared DrapeTexture(...) logic below, which
+    // that window calls into.
 
     /// <summary>
     /// Drapes a diffuse texture over a terrain as its single Terrain Layer,
