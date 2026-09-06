@@ -41,7 +41,7 @@ public static class DepthWizardTerrainBuilder
     // Auto-run the pyramid test the moment this script finishes compiling -
     // no menu click needed. Guarded so it only builds once; delete the
     // PyramidTest_Terrain GameObject from the scene if you want it to redo.
-    [DidReloadScripts]
+    // [DidReloadScripts]
     static void AutoRunOnce()
     {
         bool pyramidExists = GameObject.Find("PyramidTest_Terrain") != null;
