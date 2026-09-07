@@ -26,6 +26,20 @@ public class RealWorldSizeMeters
     public float height;
 }
 
+// Team A has not started shipping accuracy_metrics yet (tracked in the
+// Phase 3 brief as blocked on their side). "rmse"/"mae" here are a
+// best-effort guess at the eventual JSON key names, not a confirmed
+// schema - if their real keys differ once delivered, JsonUtility will
+// just leave this field null (same as today), so MetadataPanel keeps
+// showing "Pending"/"-" instead of crashing; update these field names to
+// match once Team A's actual manifest shape is known.
+[Serializable]
+public class AccuracyMetrics
+{
+    public float rmse;
+    public float mae;
+}
+
 [Serializable]
 public class TerrainSceneManifest
 {
@@ -41,4 +55,11 @@ public class TerrainSceneManifest
     public ElevationRangeMeters elevation_range_m;
     public bool reference_available;
     public RealWorldSizeMeters real_world_size_m;
+
+    // Not yet delivered by Team A - absent from every manifest in the repo
+    // today, so JsonUtility leaves these at their C# default (null string,
+    // null AccuracyMetrics). Treat null/empty as "not provided yet", not a
+    // parse failure - see MetadataPanel.cs.
+    public string terrain_type;
+    public AccuracyMetrics accuracy_metrics;
 }
