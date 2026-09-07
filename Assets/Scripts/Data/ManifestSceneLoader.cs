@@ -118,7 +118,14 @@ public class ManifestSceneLoader : MonoBehaviour
         Terrain[] existingTerrains = Object.FindObjectsByType<Terrain>(FindObjectsSortMode.None);
         foreach (Terrain t in existingTerrains)
         {
+            // TerrainData is a separate in-memory asset (like a Mesh or
+            // Texture2D) that Destroy(t.gameObject) does NOT free on its
+            // own - it would otherwise leak one full heights array per
+            // swap. Grab the reference before destroying the GameObject
+            // and destroy it explicitly too.
+            TerrainData staleTerrainData = t.terrainData;
             Destroy(t.gameObject);
+            if (staleTerrainData != null) Destroy(staleTerrainData);
         }
         currentTerrainGO = null;
 
