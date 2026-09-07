@@ -2,9 +2,11 @@
 //
 // Phase 3 UI: builds a simple runtime button list, one button per available
 // manifest under Assets/<searchRoot>, and calls the existing
-// ManifestSceneLoader.Load(id) when clicked. This script only discovers ids
-// and calls Load() - it does not touch ManifestSceneLoader's internal
-// lookup/swap/dispose logic at all.
+// ManifestSceneLoader.Load(id) when clicked (wrapped in a LoadingOverlay so
+// the swap shows a loading state instead of a silent hitch - see
+// LoadingOverlay.cs). This script only discovers ids and calls Load() - it
+// does not touch ManifestSceneLoader's internal lookup/swap/dispose logic
+// at all.
 //
 // The id-discovery scan below intentionally mirrors
 // ManifestSceneLoader.FindManifestPath's two conventions (see that file)
@@ -23,6 +25,7 @@
 // No prefab wiring required: drop this component on any GameObject in the
 // scene (the Canvas itself is fine) and it builds its own button list under
 // a Canvas at Start.
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
@@ -43,10 +46,17 @@ public class SceneSwapMenu : MonoBehaviour
     [Tooltip("Anchored position (from the Canvas's top-left) of the button list's container.")]
     [SerializeField] private Vector2 anchoredPosition = new Vector2(16f, -16f);
 
+    [Tooltip("Shown for the duration of each swap so it never looks frozen. Auto-found, or added to this GameObject, if left empty.")]
+    [SerializeField] private LoadingOverlay overlay;
+
+    readonly List<Button> spawnedButtons = new List<Button>();
+
     void Start()
     {
         if (loader == null) loader = Object.FindFirstObjectByType<ManifestSceneLoader>();
         if (targetCanvas == null) targetCanvas = Object.FindFirstObjectByType<Canvas>();
+        if (overlay == null) overlay = Object.FindFirstObjectByType<LoadingOverlay>();
+        if (overlay == null) overlay = gameObject.AddComponent<LoadingOverlay>();
 
         if (loader == null || targetCanvas == null)
         {
@@ -116,11 +126,11 @@ public class SceneSwapMenu : MonoBehaviour
 
         foreach (string id in ids)
         {
-            CreateButton(panelGO.transform, id);
+            spawnedButtons.Add(CreateButton(panelGO.transform, id));
         }
     }
 
-    void CreateButton(Transform parent, string id)
+    Button CreateButton(Transform parent, string id)
     {
         GameObject buttonGO = new GameObject($"Btn_{id}", typeof(RectTransform));
         buttonGO.transform.SetParent(parent, false);
@@ -149,9 +159,27 @@ public class SceneSwapMenu : MonoBehaviour
         label.color = Color.white;
         label.raycastTarget = false;
 
-        // Captures id by value for the closure. This is the only call this
-        // script makes into ManifestSceneLoader - Load()'s own swap/dispose
-        // logic is untouched.
-        button.onClick.AddListener(() => loader.Load(id));
+        // Captures id by value for the closure. The only call this makes
+        // into ManifestSceneLoader is loader.Load(id) - its swap/dispose
+        // logic is untouched; the overlay/coroutine just wraps that call
+        // so the swap shows a loading state instead of a silent hitch.
+        button.onClick.AddListener(() => StartCoroutine(SwapTo(id)));
+
+        return button;
+    }
+
+    IEnumerator SwapTo(string id)
+    {
+        SetButtonsInteractable(false);
+        yield return overlay.RunWithOverlay(() => loader.Load(id));
+        SetButtonsInteractable(true);
+    }
+
+    void SetButtonsInteractable(bool interactable)
+    {
+        foreach (Button b in spawnedButtons)
+        {
+            if (b != null) b.interactable = interactable;
+        }
     }
 }
