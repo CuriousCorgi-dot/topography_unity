@@ -62,8 +62,11 @@ public class ManifestSceneLoader : MonoBehaviour
             return;
         }
 
+        // TerrainSceneManifest.Parse, not JsonUtility.FromJson directly -
+        // see that method's header for why (JsonUtility never leaves
+        // accuracy_metrics null on its own, even when the JSON omits it).
         TerrainSceneManifest manifest =
-            JsonUtility.FromJson<TerrainSceneManifest>(File.ReadAllText(manifestPath));
+            TerrainSceneManifest.Parse(File.ReadAllText(manifestPath));
 
         ManifestValidator.ValidateOrThrow(manifest);
 

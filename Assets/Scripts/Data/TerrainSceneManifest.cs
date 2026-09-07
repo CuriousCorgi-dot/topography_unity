@@ -10,7 +10,19 @@
 // mesh_width_px/mesh_height_px, for instance) - JsonUtility just leaves
 // those at their C# default, so treat 0/null on those as "not provided"
 // rather than a parse failure.
+//
+// CAVEAT that only applies to nested [Serializable] class fields (currently
+// just accuracy_metrics): JsonUtility's native serializer always allocates
+// a non-null instance for those, even when the key is completely absent
+// from the source JSON - it has no representation for "this compound field
+// is null" and needs a fully-populated object graph. Only that nested
+// object's own leaf values (rmse/mae) actually stay at their type default
+// (0) when absent; the object reference itself is never null coming out of
+// JsonUtility.FromJson. Use TerrainSceneManifest.Parse (not
+// JsonUtility.FromJson directly) to get a real null there when the key
+// truly wasn't in the JSON.
 using System;
+using UnityEngine;
 
 [Serializable]
 public class ElevationRangeMeters
@@ -57,9 +69,33 @@ public class TerrainSceneManifest
     public RealWorldSizeMeters real_world_size_m;
 
     // Not yet delivered by Team A - absent from every manifest in the repo
-    // today, so JsonUtility leaves these at their C# default (null string,
-    // null AccuracyMetrics). Treat null/empty as "not provided yet", not a
-    // parse failure - see MetadataPanel.cs.
+    // today. terrain_type (a plain string) correctly stays null when
+    // absent; accuracy_metrics does NOT (see the JsonUtility caveat above) -
+    // always go through Parse() below rather than JsonUtility.FromJson
+    // directly, or accuracy_metrics will read as a real all-zero result
+    // instead of "not provided". Treat null/empty as "not provided yet",
+    // not a parse failure - see MetadataPanel.cs.
     public string terrain_type;
     public AccuracyMetrics accuracy_metrics;
+
+    /// <summary>
+    /// Parses manifest JSON exactly like JsonUtility.FromJson, with one
+    /// correction: JsonUtility always allocates a non-null accuracy_metrics
+    /// instance even when that key is absent from the JSON (see the class
+    /// header's caveat), so a plain null-check on it can never distinguish
+    /// "genuinely all-zero metrics were reported" from "the key was never
+    /// in the source JSON at all". This does an explicit raw-text presence
+    /// check for the "accuracy_metrics" key and nulls the field back out
+    /// if it truly wasn't there.
+    /// </summary>
+    public static TerrainSceneManifest Parse(string json)
+    {
+        TerrainSceneManifest manifest = JsonUtility.FromJson<TerrainSceneManifest>(json);
+        if (manifest != null && manifest.accuracy_metrics != null &&
+            (json == null || !json.Contains("\"accuracy_metrics\"")))
+        {
+            manifest.accuracy_metrics = null;
+        }
+        return manifest;
+    }
 }
