@@ -51,6 +51,18 @@ public class SceneSwapMenu : MonoBehaviour
 
     readonly List<Button> spawnedButtons = new List<Button>();
 
+    // Explicit re-entrancy guard, on top of (not instead of) disabling the
+    // buttons and the overlay's raycast-blocking: checked synchronously the
+    // instant a click fires, before any coroutine is even started, so it
+    // can't be raced by a click landing in the single frame before
+    // SetButtonsInteractable(false) takes visual effect. Calling
+    // ManifestSceneLoader.Load() again while a previous SwapTo is still
+    // yield-returning on the Coroutine it got back stops that Coroutine out
+    // from under the waiter and hangs it forever (Unity doesn't wake a
+    // coroutine that was waiting on one that got externally stopped) - see
+    // the fix/scene-swap-async-loading branch history for the reproduction.
+    bool isSwapping;
+
     void Start()
     {
         if (loader == null) loader = Object.FindFirstObjectByType<ManifestSceneLoader>();
@@ -163,16 +175,24 @@ public class SceneSwapMenu : MonoBehaviour
         // into ManifestSceneLoader is loader.Load(id) - its swap/dispose
         // logic is untouched; the overlay/coroutine just wraps that call
         // so the swap shows a loading state instead of a silent hitch.
-        button.onClick.AddListener(() => StartCoroutine(SwapTo(id)));
+        button.onClick.AddListener(() => TrySwapTo(id));
 
         return button;
     }
 
+    void TrySwapTo(string id)
+    {
+        if (isSwapping) return; // see the isSwapping field comment
+        StartCoroutine(SwapTo(id));
+    }
+
     IEnumerator SwapTo(string id)
     {
+        isSwapping = true;
         SetButtonsInteractable(false);
         yield return overlay.RunWithOverlay(() => loader.Load(id));
         SetButtonsInteractable(true);
+        isSwapping = false;
     }
 
     void SetButtonsInteractable(bool interactable)
