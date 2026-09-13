@@ -28,11 +28,16 @@
 // into Resources or StreamingAssets and swap the lookup bodies for a
 // Resources.Load / StreamingAssets read; Load()'s parsing, validation and
 // terrain-building don't need to change.
+
+using System.Collections;
 using System.IO;
+using TMPro;
 using UnityEngine;
 
 public class ManifestSceneLoader : MonoBehaviour
 {
+    [SerializeField] private TMP_Text loadingText;
+
     [Tooltip("Scene/patch id to load, e.g. \"patch_43\" or \"pyramid\". Matches a file named \"<id>_manifest.json\", or a \"manifest.json\" inside a folder named <id>.")]
     [SerializeField] private string sceneId = "patch_43";
 
@@ -41,131 +46,278 @@ public class ManifestSceneLoader : MonoBehaviour
 
     public TerrainSceneManifest LoadedManifest { get; private set; }
 
-    // Tracks the terrain this loader itself built, so a later Load() call
-    // (or DepthWizard's own menu builds sitting in the scene already) all
-    // get cleaned up the same way - see BuildTerrainFromManifest.
-    GameObject currentTerrainGO;
+    // Terrain GameObject created by this loader.
+    private GameObject currentTerrainGO;
+
+    // TerrainData created by this loader.
+    // This is the ONLY TerrainData that this script explicitly destroys.
+    private TerrainData currentTerrainData;
+
+    // Keeps track of the currently running load operation so a new scene
+    // selection can cancel the previous one.
+    private Coroutine activeLoadCoroutine;
 
     void Start()
     {
         Load(sceneId);
     }
 
-    /// <summary>Finds, parses, validates and logs the manifest for the given scene id, then builds/swaps in the matching terrain.</summary>
+    /// <summary>
+    /// Starts loading the requested scene and displays the loading state.
+    /// </summary>
     public void Load(string id)
     {
-        sceneId = id;
-        string manifestPath = FindManifestPath(id);
-        if (manifestPath == null)
+        // Stop an older load if the user selects another scene quickly.
+        if (activeLoadCoroutine != null)
         {
-            Debug.LogWarning($"ManifestSceneLoader: no manifest found for scene id '{id}' under Assets/{searchRoot}.");
-            return;
+            StopCoroutine(activeLoadCoroutine);
+            activeLoadCoroutine = null;
         }
 
-        // TerrainSceneManifest.Parse, not JsonUtility.FromJson directly -
-        // see that method's header for why (JsonUtility never leaves
-        // accuracy_metrics null on its own, even when the JSON omits it).
-        TerrainSceneManifest manifest =
-            TerrainSceneManifest.Parse(File.ReadAllText(manifestPath));
-
-        ManifestValidator.ValidateOrThrow(manifest);
-
-        LoadedManifest = manifest;
-        LogManifest(manifestPath, manifest);
-
-        string heightmapPath = FindHeightmapPath(manifestPath, id);
-        if (heightmapPath == null)
-        {
-            Debug.LogWarning(
-                $"ManifestSceneLoader: manifest found for '{id}' but no matching heightmap PNG sits next to it " +
-                $"(looked for '{id}_heightmap.png' and 'heightmap.png' in '{Path.GetDirectoryName(manifestPath)}'). " +
-                $"NOTE: manifest.heightmap ('{manifest.heightmap}') is Team A's original delivery path, not a " +
-                "project-relative one - it can't be used directly to find the file. Terrain was not rebuilt.");
-            return;
-        }
-
-        BuildTerrainFromManifest(id, manifest, heightmapPath);
+        activeLoadCoroutine = StartCoroutine(LoadSceneRoutine(id));
     }
 
-    void BuildTerrainFromManifest(string id, TerrainSceneManifest manifest, string heightmapPath)
+    private IEnumerator LoadSceneRoutine(string id)
     {
-        ushort[,] raw16;
-        int srcW, srcH;
+        ShowLoading();
+
+        // Give Unity one frame to actually render the loading message
+        // before the synchronous terrain-building work begins.
+        yield return null;
+
         try
         {
-            raw16 = TerrainBuildUtility.LoadGrayscale16Png(heightmapPath, out srcW, out srcH);
+            sceneId = id;
+
+            string manifestPath = FindManifestPath(id);
+
+            if (manifestPath == null)
+            {
+                Debug.LogWarning(
+                    $"ManifestSceneLoader: no manifest found for scene id '{id}' under Assets/{searchRoot}.");
+
+                yield break;
+            }
+
+            // TerrainSceneManifest.Parse, not JsonUtility.FromJson directly -
+            // see that method's header for why.
+            TerrainSceneManifest manifest =
+                TerrainSceneManifest.Parse(File.ReadAllText(manifestPath));
+
+            ManifestValidator.ValidateOrThrow(manifest);
+
+            LoadedManifest = manifest;
+            LogManifest(manifestPath, manifest);
+
+            string heightmapPath = FindHeightmapPath(manifestPath, id);
+
+            if (heightmapPath == null)
+            {
+                Debug.LogWarning(
+                    $"ManifestSceneLoader: manifest found for '{id}' but no matching heightmap PNG sits next to it " +
+                    $"(looked for '{id}_heightmap.png' and 'heightmap.png' in '{Path.GetDirectoryName(manifestPath)}'). " +
+                    $"NOTE: manifest.heightmap ('{manifest.heightmap}') is Team A's original delivery path, not a " +
+                    "project-relative one - it can't be used directly to find the file. Terrain was not rebuilt.");
+
+                yield break;
+            }
+
+            BuildTerrainFromManifest(id, manifest, heightmapPath);
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"ManifestSceneLoader: failed to decode heightmap '{heightmapPath}': {e.Message}. Terrain was not rebuilt.");
+            Debug.LogError(
+                $"ManifestSceneLoader: failed to load scene '{id}': {e.Message}\n{e.StackTrace}");
+        }
+        finally
+        {
+            HideLoading();
+            activeLoadCoroutine = null;
+        }
+    }
+
+    private void ShowLoading()
+    {
+        if (loadingText == null)
+            return;
+
+        loadingText.text = "Loading...";
+        loadingText.gameObject.SetActive(true);
+    }
+
+    private void HideLoading()
+    {
+        if (loadingText == null)
+            return;
+
+        loadingText.gameObject.SetActive(false);
+    }
+
+    void BuildTerrainFromManifest(
+        string id,
+        TerrainSceneManifest manifest,
+        string heightmapPath)
+    {
+        ushort[,] raw16;
+        int srcW;
+        int srcH;
+
+        try
+        {
+            raw16 = TerrainBuildUtility.LoadGrayscale16Png(
+                heightmapPath,
+                out srcW,
+                out srcH);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError(
+                $"ManifestSceneLoader: failed to decode heightmap '{heightmapPath}': {e.Message}. Terrain was not rebuilt.");
             return;
         }
 
-        int resolution = TerrainBuildUtility.PickHeightmapResolution(Mathf.Max(srcW, srcH));
-        float[,] heights = TerrainBuildUtility.BuildHeightsArray(raw16, srcW, srcH, resolution);
+        int resolution =
+            TerrainBuildUtility.PickHeightmapResolution(
+                Mathf.Max(srcW, srcH));
 
-        float elevationMin = manifest.elevation_range_m != null ? manifest.elevation_range_m.min : 0f;
-        float elevationMax = manifest.elevation_range_m != null ? manifest.elevation_range_m.max : 1f;
-        float worldWidth = manifest.real_world_size_m != null ? manifest.real_world_size_m.width : srcW;
-        float worldLength = manifest.real_world_size_m != null ? manifest.real_world_size_m.height : srcH;
+        float[,] heights =
+            TerrainBuildUtility.BuildHeightsArray(
+                raw16,
+                srcW,
+                srcH,
+                resolution);
 
-        // Dispose every existing Terrain in the scene before building the
-        // new one - this is Person 2's "dispose on switch" Phase 3 item,
-        // and it sidesteps any GameObject-naming mismatch between whatever
-        // was already here (Patch43_Terrain from a DepthWizard menu build,
-        // PyramidTest_Terrain, a terrain from a previous Load() call, ...)
-        // and the id being loaded now. Terrain.CreateTerrainGameObject also
-        // adds a TerrainCollider, so destroying the whole GameObject takes
-        // that with it - no stale collider left behind to false-hit a
-        // raycast against the old terrain's shape.
-        Terrain[] existingTerrains = Object.FindObjectsByType<Terrain>(FindObjectsSortMode.None);
+        float elevationMin =
+            manifest.elevation_range_m != null
+                ? manifest.elevation_range_m.min
+                : 0f;
+
+        float elevationMax =
+            manifest.elevation_range_m != null
+                ? manifest.elevation_range_m.max
+                : 1f;
+
+        float worldWidth =
+            manifest.real_world_size_m != null
+                ? manifest.real_world_size_m.width
+                : srcW;
+
+        float worldLength =
+            manifest.real_world_size_m != null
+                ? manifest.real_world_size_m.height
+                : srcH;
+
+        // -------------------------------------------------------------
+        // CLEAN UP OLD TERRAIN
+        // -------------------------------------------------------------
+        //
+        // IMPORTANT:
+        // Existing terrains in the scene may reference TerrainData assets
+        // serialized by Unity. Destroying those TerrainData objects causes:
+        //
+        // "Destroying assets is not permitted to avoid data loss."
+        //
+        // Therefore:
+        //   1. Destroy the old Terrain GameObjects.
+        //   2. ONLY destroy the TerrainData that THIS loader created.
+
+        Terrain[] existingTerrains =
+            Object.FindObjectsByType<Terrain>(
+                FindObjectsSortMode.None);
+
         foreach (Terrain t in existingTerrains)
         {
-            // TerrainData is a separate in-memory asset (like a Mesh or
-            // Texture2D) that Destroy(t.gameObject) does NOT free on its
-            // own - it would otherwise leak one full heights array per
-            // swap. Grab the reference before destroying the GameObject
-            // and destroy it explicitly too.
-            TerrainData staleTerrainData = t.terrainData;
+            if (t == null)
+                continue;
+
+            // If this is our previously-created runtime terrain,
+            // remove its GameObject here. Its TerrainData is handled below.
             Destroy(t.gameObject);
-            if (staleTerrainData != null) Destroy(staleTerrainData);
         }
+
+        // The TerrainData created by our previous runtime load is not a
+        // project asset, so it is safe to destroy explicitly.
+        if (currentTerrainData != null)
+        {
+            Destroy(currentTerrainData);
+            currentTerrainData = null;
+        }
+
         currentTerrainGO = null;
 
+        // -------------------------------------------------------------
+        // BUILD NEW TERRAIN
+        // -------------------------------------------------------------
+
         string terrainName = $"{id}_Terrain";
-        currentTerrainGO = TerrainBuildUtility.CreateTerrainGameObject(
-            heights, resolution, worldWidth, worldLength, elevationMin, elevationMax, terrainName,
-            out TerrainData terrainData);
 
-        Debug.Log($"ManifestSceneLoader: built '{terrainName}' at runtime from '{heightmapPath}' " +
-                  $"({srcW}x{srcH} -> resolution {resolution}). Size {worldWidth}m x {elevationMax - elevationMin}m x {worldLength}m, " +
-                  $"elevation {elevationMin}m to {elevationMax}m.");
+        TerrainData newTerrainData;
 
-        // Terrain.activeTerrain now points at the new terrain instead of
-        // whatever was destroyed above - re-frame the orbit camera and let
-        // ElevationDisplay's next raycast pick it up naturally (it re-reads
-        // LoadedManifest/Terrain.activeTerrain each hit, nothing to push
-        // there).
-        OrbitFlyCamera cam = Object.FindFirstObjectByType<OrbitFlyCamera>();
-        if (cam != null) cam.Recenter();
+        currentTerrainGO =
+            TerrainBuildUtility.CreateTerrainGameObject(
+                heights,
+                resolution,
+                worldWidth,
+                worldLength,
+                elevationMin,
+                elevationMax,
+                terrainName,
+                out newTerrainData);
+
+        // Remember the runtime TerrainData so we can safely dispose of it
+        // on the next scene switch.
+        currentTerrainData = newTerrainData;
+
+        Debug.Log(
+            $"ManifestSceneLoader: built '{terrainName}' at runtime from '{heightmapPath}' " +
+            $"({srcW}x{srcH} -> resolution {resolution}). Size {worldWidth}m x {elevationMax - elevationMin}m x {worldLength}m, " +
+            $"elevation {elevationMin}m to {elevationMax}m.");
+
+        // Terrain.activeTerrain now points at the new terrain.
+        // Re-frame the orbit camera.
+        OrbitFlyCamera cam =
+            Object.FindFirstObjectByType<OrbitFlyCamera>();
+
+        if (cam != null)
+            cam.Recenter();
     }
 
     string FindManifestPath(string id)
     {
-        string root = Path.Combine(Application.dataPath, searchRoot);
-        if (!Directory.Exists(root)) return null;
+        string root =
+            Path.Combine(Application.dataPath, searchRoot);
 
-        // Preferred convention (what's already in this repo): "<id>_manifest.json" anywhere under the search root.
-        foreach (string candidate in Directory.GetFiles(root, $"{id}_manifest.json", SearchOption.AllDirectories))
+        if (!Directory.Exists(root))
+            return null;
+
+        // Preferred convention:
+        // "<id>_manifest.json" anywhere under the search root.
+
+        foreach (string candidate in Directory.GetFiles(
+            root,
+            $"{id}_manifest.json",
+            SearchOption.AllDirectories))
         {
             return candidate;
         }
 
-        // Fallback convention (matches Team A's raw delivery layout): a generic "manifest.json" inside a folder named after the id.
-        foreach (string candidate in Directory.GetFiles(root, "manifest.json", SearchOption.AllDirectories))
+        // Fallback convention:
+        // generic "manifest.json" inside a folder named after the id.
+
+        foreach (string candidate in Directory.GetFiles(
+            root,
+            "manifest.json",
+            SearchOption.AllDirectories))
         {
-            string folder = Path.GetFileName(Path.GetDirectoryName(candidate) ?? string.Empty);
-            if (string.Equals(folder, id, System.StringComparison.OrdinalIgnoreCase))
+            string folder =
+                Path.GetFileName(
+                    Path.GetDirectoryName(candidate)
+                    ?? string.Empty);
+
+            if (string.Equals(
+                folder,
+                id,
+                System.StringComparison.OrdinalIgnoreCase))
             {
                 return candidate;
             }
@@ -174,27 +326,44 @@ public class ManifestSceneLoader : MonoBehaviour
         return null;
     }
 
-    // Mirrors FindManifestPath's two conventions, but for the heightmap PNG
-    // sitting beside whichever manifest FindManifestPath actually found -
-    // NOT via manifest.heightmap (see the header comment for why that field
-    // can't be trusted).
-    string FindHeightmapPath(string manifestPath, string id)
+    string FindHeightmapPath(
+        string manifestPath,
+        string id)
     {
-        string dir = Path.GetDirectoryName(manifestPath);
-        if (dir == null) return null;
+        string dir =
+            Path.GetDirectoryName(manifestPath);
 
-        // Preferred convention: "<id>_heightmap.png" next to "<id>_manifest.json".
-        string preferred = Path.Combine(dir, $"{id}_heightmap.png");
-        if (File.Exists(preferred)) return preferred;
+        if (dir == null)
+            return null;
 
-        // Fallback convention: a generic "heightmap.png" next to a generic "manifest.json".
-        string fallback = Path.Combine(dir, "heightmap.png");
-        if (File.Exists(fallback)) return fallback;
+        // Preferred convention:
+        // "<id>_heightmap.png" next to "<id>_manifest.json".
+
+        string preferred =
+            Path.Combine(
+                dir,
+                $"{id}_heightmap.png");
+
+        if (File.Exists(preferred))
+            return preferred;
+
+        // Fallback convention:
+        // generic "heightmap.png" next to "manifest.json".
+
+        string fallback =
+            Path.Combine(
+                dir,
+                "heightmap.png");
+
+        if (File.Exists(fallback))
+            return fallback;
 
         return null;
     }
 
-    void LogManifest(string path, TerrainSceneManifest m)
+    void LogManifest(
+        string path,
+        TerrainSceneManifest m)
     {
         Debug.Log(
             $"ManifestSceneLoader: loaded '{path}'\n" +
