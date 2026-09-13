@@ -6,12 +6,15 @@
 // Built entirely at runtime (a procedural ring sprite included) - no
 // prefab or texture assets required.
 //
-// ManifestSceneLoader.Load() is a plain synchronous method, not a
-// coroutine, and nothing here changes that. So the spinner cannot
-// actually animate mid-call - what RunWithOverlay guarantees instead is
-// that the overlay is fully presented on screen for a couple of frames
-// *before* the blocking call starts, and stays up until it returns, so a
-// swap reads as "now loading" rather than an unexplained hitch.
+// ManifestSceneLoader.Load() is fire-and-forget: it starts its own
+// coroutine and returns the Coroutine handle immediately, the actual
+// manifest-parse/terrain-build work happens over the following frames.
+// RunWithOverlay below relies on that returned handle - it shows the
+// overlay, waits for it to actually render, starts the load via the given
+// delegate, then "yield return"s the Coroutine it gets back so this
+// coroutine genuinely waits for the async load to finish before hiding
+// the overlay again (a bare "call it and hide" would hide/re-enable the
+// UI while the terrain build was still in flight).
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
@@ -43,20 +46,30 @@ public class LoadingOverlay : MonoBehaviour
         }
     }
 
-    /// <summary>Shows the overlay, waits for it to actually render, runs <paramref name="work"/>, then hides the overlay again.</summary>
-    public IEnumerator RunWithOverlay(System.Action work)
+    /// <summary>
+    /// Shows the overlay, waits for it to actually render, calls
+    /// <paramref name="startWork"/> to kick off the real work and waits for
+    /// the Coroutine it returns to finish, then hides the overlay again.
+    /// Hiding always runs (try/finally), including if starting the work
+    /// throws before it ever returns a Coroutine.
+    /// </summary>
+    public IEnumerator RunWithOverlay(System.Func<Coroutine> startWork)
     {
         Show();
 
-        // Let the overlay actually get presented before the blocking call
-        // below - otherwise Unity would never draw this frame and the
+        // Let the overlay actually get presented before starting the work
+        // below - otherwise Unity might never draw this frame and the
         // screen would just freeze with no visible transition at all.
         yield return null;
         yield return null;
 
         try
         {
-            work();
+            Coroutine work = startWork();
+            if (work != null)
+            {
+                yield return work;
+            }
         }
         finally
         {
