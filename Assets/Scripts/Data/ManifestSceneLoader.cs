@@ -64,8 +64,13 @@ public class ManifestSceneLoader : MonoBehaviour
 
     /// <summary>
     /// Starts loading the requested scene and displays the loading state.
+    /// Returns the Coroutine handle so a caller that needs to know when the
+    /// (async, one-frame-delayed) load actually finishes can
+    /// "yield return loader.Load(id);" instead of assuming this call
+    /// blocks - it doesn't. Callers that don't care can ignore the return
+    /// value exactly as before.
     /// </summary>
-    public void Load(string id)
+    public Coroutine Load(string id)
     {
         // Stop an older load if the user selects another scene quickly.
         if (activeLoadCoroutine != null)
@@ -75,6 +80,7 @@ public class ManifestSceneLoader : MonoBehaviour
         }
 
         activeLoadCoroutine = StartCoroutine(LoadSceneRoutine(id));
+        return activeLoadCoroutine;
     }
 
     private IEnumerator LoadSceneRoutine(string id)
