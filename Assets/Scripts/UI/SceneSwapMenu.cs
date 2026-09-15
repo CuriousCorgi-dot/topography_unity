@@ -16,11 +16,9 @@
 // It just enumerates every id found instead of stopping at the first match
 // for one given id.
 //
-// EDITOR/DEV-ONLY, same caveat as ManifestSceneLoader: this scans
-// Application.dataPath directly, so it only finds manifests in Editor Play
-// mode or a dev build with Assets/ alongside it - not a shipped build (see
-// ManifestSceneLoader.cs header for the Resources/StreamingAssets migration
-// note that applies here too).
+// Scans Application.streamingAssetsPath, same as ManifestSceneLoader - a
+// real folder that ships inside a build, so this finds manifests in the
+// Editor, in Play mode, and in a shipped standalone build alike.
 //
 // No prefab wiring required: drop this component on any GameObject in the
 // scene (the Canvas itself is fine) and it builds its own button list under
@@ -51,6 +49,18 @@ public class SceneSwapMenu : MonoBehaviour
 
     readonly List<Button> spawnedButtons = new List<Button>();
 
+    // Explicit re-entrancy guard, on top of (not instead of) disabling the
+    // buttons and the overlay's raycast-blocking: checked synchronously the
+    // instant a click fires, before any coroutine is even started, so it
+    // can't be raced by a click landing in the single frame before
+    // SetButtonsInteractable(false) takes visual effect. Calling
+    // ManifestSceneLoader.Load() again while a previous SwapTo is still
+    // yield-returning on the Coroutine it got back stops that Coroutine out
+    // from under the waiter and hangs it forever (Unity doesn't wake a
+    // coroutine that was waiting on one that got externally stopped) - see
+    // the fix/scene-swap-async-loading branch history for the reproduction.
+    bool isSwapping;
+
     void Start()
     {
         if (loader == null) loader = Object.FindFirstObjectByType<ManifestSceneLoader>();
@@ -77,7 +87,7 @@ public class SceneSwapMenu : MonoBehaviour
     List<string> FindAvailableSceneIds()
     {
         var ids = new List<string>();
-        string root = Path.Combine(Application.dataPath, searchRoot);
+        string root = Path.Combine(Application.streamingAssetsPath, searchRoot);
         if (!Directory.Exists(root)) return ids;
 
         const string suffix = "_manifest.json";
@@ -163,16 +173,24 @@ public class SceneSwapMenu : MonoBehaviour
         // into ManifestSceneLoader is loader.Load(id) - its swap/dispose
         // logic is untouched; the overlay/coroutine just wraps that call
         // so the swap shows a loading state instead of a silent hitch.
-        button.onClick.AddListener(() => StartCoroutine(SwapTo(id)));
+        button.onClick.AddListener(() => TrySwapTo(id));
 
         return button;
     }
 
+    void TrySwapTo(string id)
+    {
+        if (isSwapping) return; // see the isSwapping field comment
+        StartCoroutine(SwapTo(id));
+    }
+
     IEnumerator SwapTo(string id)
     {
+        isSwapping = true;
         SetButtonsInteractable(false);
         yield return overlay.RunWithOverlay(() => loader.Load(id));
         SetButtonsInteractable(true);
+        isSwapping = false;
     }
 
     void SetButtonsInteractable(bool interactable)

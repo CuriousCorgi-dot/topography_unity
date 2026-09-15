@@ -90,6 +90,59 @@ public static class TerrainBuildUtility
         return terrainGO;
     }
 
+    /// <summary>
+    /// Drapes a diffuse texture over a terrain as its single Terrain Layer,
+    /// tiled to exactly match the terrain's world size so it lines up 1:1
+    /// with the heightmap's footprint instead of repeating. Runtime-safe
+    /// equivalent of DepthWizardSceneSetup.DrapeTexture (Assets/Editor) -
+    /// that one calls AssetDatabase.CreateAsset to save the TerrainLayer as
+    /// a project asset, which only exists in the Editor. This version
+    /// assigns the TerrainLayer directly with no AssetDatabase involved, so
+    /// it works identically in Play mode and in a standalone build. Same
+    /// flip-vertically caveat as the Editor tool: PNG row 0 -> terrain Z=0
+    /// on decode, but tiling/UV convention is the opposite, so leave this on
+    /// unless the drape comes out mirrored top-to-bottom against the relief.
+    /// </summary>
+    public static void ApplyDiffuseTexture(TerrainData terrainData, Texture2D texture, bool flipVertically = true)
+    {
+        if (terrainData == null || texture == null)
+            return;
+
+        TerrainLayer layer = new TerrainLayer();
+        layer.diffuseTexture = texture;
+
+        Vector3 size = terrainData.size;
+        layer.tileSize = new Vector2(size.x, flipVertically ? -size.z : size.z);
+        layer.tileOffset = flipVertically ? new Vector2(0f, size.z) : Vector2.zero;
+
+        terrainData.terrainLayers = new[] { layer };
+    }
+
+    /// <summary>
+    /// Loads a PNG/JPG file from disk into a Texture2D at runtime. Unlike
+    /// the heightmap decoder above, this is NOT a from-scratch parser - it
+    /// uses ImageConversion.LoadImage (com.unity.modules.imageconversion,
+    /// already a project dependency), which only understands PNG/JPG, not
+    /// TIFF. Source .tif imagery must be converted to PNG/JPG before it
+    /// reaches this method; there is no runtime TIFF decoder in Unity.
+    /// Returns null (does not throw) if the file is missing or fails to
+    /// decode, so callers can treat a missing texture as "skip draping"
+    /// rather than a fatal load error - draping is cosmetic, the terrain
+    /// itself doesn't depend on it.
+    /// </summary>
+    public static Texture2D LoadTextureFromFile(string path)
+    {
+        if (!File.Exists(path))
+            return null;
+
+        byte[] bytes = File.ReadAllBytes(path);
+        Texture2D texture = new Texture2D(2, 2, TextureFormat.RGB24, false);
+        if (!texture.LoadImage(bytes))
+            return null;
+
+        return texture;
+    }
+
     // ------------------------------------------------------------------
     // Minimal PNG decoder for exactly one case: single-channel (grayscale),
     // 16-bit-per-sample, non-interlaced PNG - which is exactly what PIL's
