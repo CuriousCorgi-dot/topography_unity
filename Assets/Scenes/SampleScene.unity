@@ -659,6 +659,7 @@ GameObject:
   - component: {fileID: 865268275}
   - component: {fileID: 865268279}
   - component: {fileID: 865268280}
+  - component: {fileID: 865268281}
   m_Layer: 5
   m_Name: Canvas
   m_TagString: Untagged
@@ -781,6 +782,24 @@ MonoBehaviour:
   loader: {fileID: 0}
   targetCanvas: {fileID: 0}
   anchoredPosition: {x: -16, y: -16}
+--- !u!114 &865268281
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 865268274}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c3dcc0cdbbb74c4e881e7c4b26379006, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ElevationDisplay
+  sourceCamera: {fileID: 0}
+  maxRayDistance: 100000
+  manifestLoader: {fileID: 0}
+  targetCanvas: {fileID: 865268277}
+  anchoredPosition: {x: 16, y: 16}
+  fontSize: 22
 --- !u!1 &1135071690
 GameObject:
   m_ObjectHideFlags: 0
@@ -878,7 +897,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1390816760
 RectTransform:
   m_ObjectHideFlags: 0
@@ -910,10 +929,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c3dcc0cdbbb74c4e881e7c4b26379006, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ElevationDisplay
-  readoutText: {fileID: 0}
   sourceCamera: {fileID: 0}
   maxRayDistance: 100000
   manifestLoader: {fileID: 0}
+  targetCanvas: {fileID: 0}
+  anchoredPosition: {x: 16, y: 16}
+  fontSize: 22
 --- !u!114 &1390816762
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -934,7 +955,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Elevation: -- m
+  m_text: '
 
 '
   m_isRightToLeft: 0
@@ -1045,6 +1066,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2da29c74b1454365a064d7e44b2e26a8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ManifestSceneLoader
+  loadingText: {fileID: 0}
   sceneId: patch_43
   searchRoot: Terrain
 --- !u!4 &1628191415

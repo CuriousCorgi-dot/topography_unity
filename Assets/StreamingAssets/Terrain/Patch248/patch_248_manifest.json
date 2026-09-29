@@ -1,0 +1,20 @@
+{
+    "id": "S2A_MSIL2A_20230715T101601_R065_T32TNT_20230715T181708_patch_248",
+    "source_image": "S2A_MSIL2A_20230715T101601_R065_T32TNT_20230715T181708_patch_248.tif",
+    "heightmap": "target/heightmap.png",
+    "heightmap_encoding": "grayscale16",
+    "heightmap_width_px": 512,
+    "heightmap_height_px": 512,
+    "mesh_width_px": 256,
+    "mesh_height_px": 256,
+    "mesh_subsample_factor": 2,
+    "elevation_range_m": {
+        "min": 1626.23,
+        "max": 2568.11
+    },
+    "reference_available": true,
+    "real_world_size_m": {
+        "width": 5159.47,
+        "height": 5173.36
+    }
+}
